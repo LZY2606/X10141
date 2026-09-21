@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>脱敏映射室</title>
+<style>
+  :root { --bg:#0f1420; --panel:#182034; --line:#2a3550; --fg:#dfe6f3; --dim:#8b96ad; --acc:#5aa2ff; --ok:#4cc38a; --bad:#e5636f; }
+  * { box-sizing: border-box; }
+  body to {}
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif; }
+  header { padding:18px 28px; border-bottom:1px solid var(--line); display:flex; align-items:baseline; gap:14px; }
+  header h1 { font-size:20px; margin:0; }
+  header span { color:var(--dim); font-size:12px; }
+  main { display:grid; grid-template-columns:1fr 1fr; gap:16px; padding:20px 28px; max-width:1280px; margin:0 auto; }
+  section.card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px 18px; }
+  section.card h2 { margin:0 0 10px; font-size:15px; color:var(--acc); }
+  label { display:block; color:var(--dim); font-size:12px; margin:8px 0 3px; }
+  input, textarea, select { width:100%; background:#0d1220; color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:7px 9px; font:inherit; }
+  textarea { min-height:70px; resize:vertical; font-family:ui-monospace,Menlo,monospace; font-size:13px; }
+  button { margin-top:10px; background:var(--acc); color:#081226; border:0; border-radius:6px; padding:8px 16px; font-weight:600; cursor:pointer; }
+  button.ghost { background:transparent; border:1px solid var(--acc); color:var(--acc); }
+  table { width:100%; border-collapse:collapse; margin-top:10px; font-size:12.5px; }
+  th, td { text-align:left; padding:5px 7px; border-bottom:1px solid var(--line); vertical-align:top; word-break:break-all; }
+  th { color:var(--dim); font-weight:500; }
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .row3 { display:grid; grid-template-columns:2fr 1fr 1fr; gap:10px; }
+  .ok { color:var(--ok); } .bad { color:var(--bad); } .dim { color:var(--dim); }
+  pre { background:#0d1220; border:1px solid var(--line); border-radius:6px; padding:10px; overflow:auto; max-height:260px; font-size:12px; white-space:pre-wrap; word-break:break-all; }
+  .pill { display:inline-block; padding:1px 8px; border-radius:99px; border:1px solid var(--line); font-size:12px; margin-right:6px; }
+  .wide { grid-column:1 / -1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>脱敏映射室</h1>
+  <span>规则脱敏 · 加密映射 · 可追溯还原 · 链式审计</span>
+  <span id="geninfo" style="margin-left:auto"></span>
+</header>
+<main>
+  <section class="card">
+    <h2>1. 登记规则（带版本）</h2>
+    <div class="row3">
+      <div><label>规则 ID</label><input id="r_id" placeholder="email"></div>
+      <div><label>版本</label><input id="r_ver" type="number" value="1" min="1"></div>
+      <div><label>优先级（大者先）</label><input id="r_pri" type="number" value="0"></div>
+    </div>
+    <div class="row">
+      <div><label>匹配方式</label>
+        <select id="r_kind"><option value="literal">字面量</option><option value="regex">正则</option></select></div>
+      <div><label>稳定 token</label>
+        <select id="r_stable"><option value="true">稳定（同租户同原文同 token）</option><option value="false">每次随机</option></select></div>
+    </div>
+    <label>模式</label><input id="r_pat" placeholder="[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}">
+    <label>说明</label><input id="r_desc" placeholder="邮箱地址">
+    <button onclick="addRule()">登记 / 更新规则</button>
+    <div id="rules"></div>
+  </section>
+
+  <section class="card">
+    <h2>2. 重叠裁决预览</h2>
+    <label>待检测文本</label>
+    <textarea id="p_text" placeholder="联系 alice@example.com 或编号 ID-12345"></textarea>
+    <button class="ghost" onclick="preview()">预览裁决</button>
+    <div id="preview"></div>
+  </section>
+
+  <section class="card">
+    <h2>3. 执行脱敏</h2>
+    <label>租户</label><input id="d_tenant" placeholder="tenant-a" value="tenant-a">
+    <label>原文（日志或自由文本）</label>
+    <textarea id="d_text"></textarea>
+    <button onclick="redact()">脱敏</button>
+    <label>脱敏结果（可再次粘贴脱敏，保持不变）</label>
+    <pre id="d_out" class="dim">—</pre>
+    <div id="d_tokens"></div>
+  </section>
+
+  <section class="card">
+    <h2>4. 申请还原（仅 token + 用途）</h2>
+    <label>用途说明（必填，写入审计）</label><input id="x_purpose" placeholder="客服工单 #1234 回访">
+    <label>token 列表（每行一个，支持批量）</label>
+    <textarea id="x_tokens" placeholder="⟦TKN-…⟧"></textarea>
+    <button onclick="restore()">申请还原</button>
+    <div id="x_out"></div>
+  </section>
+
+  <section class="card">
+    <h2>5. 密钥轮换</h2>
+    <p class="dim">轮换产生新代次；旧数据仍可还原，新写入只使用新代次。崩溃恢复保证代次与审计一致。</p>
+    <button onclick="rotate()">轮换密钥</button>
+    <span id="rot_out"></span>
+  </section>
+
+  <section class="card">
+    <h2>6. 审计链完整性</h2>
+    <button class="ghost" onclick="verifyAudit()">校验链式摘要</button>
+    <span id="a_out"></span>
+    <div id="audit"></div>
+  </section>
+
+  <section class="card wide">
+    <h2>7. 导出（不含原文映射）</h2>
+    <button class="ghost" onclick="doExport()">生成导出</button>
+    <pre id="e_out" class="dim">—</pre>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function api(path, body) {
+  const opt = body === undefined ? {} : {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)};
+  const r = await fetch(path, opt);
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+async function refresh() {
+  const s = await api('/api/state');
+  $('geninfo').innerHTML = `<span class="pill">当前密钥代次: ${s.current_gen}</span><span class="pill">代次: ${s.generations.join(', ')}</span><span class="pill">映射数: ${s.mapping_count}</span>`;
+  $('rules').innerHTML = s.rules.length ? '<table><tr><th>ID</th><th>版本</th><th>方式</th><th>优先级</th><th>稳定</th><th>模式</th></tr>' +
+    s.rules.map(r => `<tr><td>${esc(r.id)}</td><td>${r.version}</td><td>${r.kind}</td><td>${r.priority}</td><td>${r.stable?'是':'否'}</td><td>${esc(r.pattern)}</td></tr>`).join('') + '</table>' : '<p class="dim">尚未登记规则</p>';
+  $('audit').innerHTML = s.audit.length ? '<table><tr><th>#</th><th>类型</th><th>摘要</th></tr>' +
+    s.audit.slice(-12).reverse().map(a => `<tr><td>${a.seq}</td><td>${esc(a.kind)}</td><td class="dim">${a.hash.slice(0,16)}…</td></tr>`).join('') + '</table>' : '<p class="dim">暂无审计记录</p>';
+}
+async function addRule() {
+  try {
+    await api('/api/rules', {id:$('r_id').value.trim(), version:+$('r_ver').value, kind:$('r_kind').value,
+      pattern:$('r_pat').value, priority:+$('r_pri').value, description:$('r_desc').value, stable:$('r_stable').value==='true'});
+    refresh();
+  } catch(e) { alert(e.message); }
+}
+function spanTable(list, extra) {
+  if (!list.length) return '<p class="dim">无</p>';
+  return '<table><tr><th>规则</th><th>区间</th><th>命中</th>' + (extra?'<th>被压下原因</th>':'') + '</tr>' +
+    list.map(m => `<tr><td>${esc(m.rule_id)} v${m.version}</td><td>[${m.start},${m.end})</td><td>${esc(m.matched)}</td>` +
+      (extra?`<td class="bad">被 ${esc(m.suppressed_by.rule_id)} v${m.suppressed_by.version} [${m.suppressed_by.start},${m.suppressed_by.end}) 压下</td>`:'') + '</tr>').join('') + '</table>';
+}
+async function preview() {
+  const p = await api('/api/preview', {text:$('p_text').value});
+  $('preview').innerHTML = '<h3 class="ok">采纳</h3>' + spanTable(p.accepted,false) + '<h3 class="bad">被压下</h3>' + spanTable(p.suppressed,true);
+}
+async function redact() {
+  try {
+    const r = await api('/api/redact', {tenant:$('d_tenant').value.trim(), text:$('d_text').value});
+    $('d_out').classList.remove('dim'); $('d_out').textContent = r.redacted;
+    $('d_tokens').innerHTML = r.tokens.length ? '<table><tr><th>token</th><th>规则</th></tr>' +
+      r.tokens.map(t => `<tr><td>${esc(t.token)}</td><td>${esc(t.rule_id)} v${t.version}</td></tr>`).join('') + '</table>' : '';
+    refresh();
+  } catch(e) { alert(e.message); }
+}
+async function restore() {
+  const tokens = $('x_tokens').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  const r = await api('/api/restore', {purpose:$('x_purpose').value, tokens});
+  $('x_out').innerHTML = '<table><tr><th>token</th><th>结果</th></tr>' + r.results.map(i =>
+    `<tr><td>${esc(i.token)}</td><td class="${i.ok?'ok':'bad'}">${i.ok?esc(i.text):esc(i.error)}</td></tr>`).join('') + '</table>';
+  refresh();
+}
+async function rotate() {
+  const r = await api('/api/rotate', {});
+  $('rot_out').innerHTML = ` <span class="ok">已轮换到代次 ${r.current_gen}</span>`;
+  refresh();
+}
+async function verifyAudit() {
+  const r = await api('/api/audit/verify');
+  $('a_out').innerHTML = r.ok ? ` <span class="ok">✔ 链完整（${r.length} 条）</span>` : ` <span class="bad">✘ 链被篡改！</span>`;
+}
+async function doExport() {
+  const r = await api('/api/export');
+  $('e_out').classList.remove('dim');
+  $('e_out').textContent = JSON.stringify(r, null, 2);
+}
+refresh();
+</script>
+</body>
+</html>
