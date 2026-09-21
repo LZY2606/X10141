@@ -34,3 +34,7 @@ coverage/
 .vite/
 .turbo/
 *.tsbuildinfo
+
+# 脱敏映射室本地数据（含主密钥与密文映射，勿提交）
+maskroom-data/
+demo-data/

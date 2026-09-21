@@ -1,0 +1,18 @@
+[package]
+name = "gsb-maskroom"
+version = "0.1.0"
+edition = "2021"
+description = "本地文本脱敏映射室：版本化规则、加密映射、稳定/随机 token、密钥轮换与链式审计"
+
+[dependencies]
+aes-gcm = "0.10"
+hmac = "0.12"
+sha2 = "0.10"
+subtle = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
+regex = "1"
+
+[profile.release]
+opt-level = 2
